@@ -158,3 +158,88 @@ function waitForDOMUpdate() {
     });
 }
 
+async function findEulerianCircuitWithVisualization(graph, map) {
+    console.log(graph['51.60578,-0.05550'], "hawk")
+    let circuit = [];
+    let adjCopy = JSON.parse(JSON.stringify(graph)); // Deep copy of the graph
+    let currentNode = Object.keys(adjCopy)[0]; // Start with an arbitrary node
+    let usedEdges = new Set(); // Track used edges
+
+    for (let i in graph){
+        console.log(graph[i].length % 2 == 1)
+    }
+
+    // Helper function to parse "lat,lng" string into an object
+    function parseLatLng(coordString) {
+        const [lat, lng] = coordString.split(',').map(Number);
+        return { lat, lng };
+    }
+
+    // Helper function to create a unique edge key (for undirected edges)
+    function createEdgeKey(node1, node2) {
+        return [node1, node2].sort().join("-");
+    }
+
+    // Helper function to delay execution
+    function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    // Helper function to visualize the traversal
+    async function visualizeEdge(fromCoord, toCoord) {
+        if (fromCoord == '51.60578,-0.05550')console.log(fromCoord, toCoord)
+        
+        const from = parseLatLng(fromCoord);
+        const to = parseLatLng(toCoord);
+
+        // Add a polyline to represent the edge being traversed
+        L.polyline([from, to], { color: "orange", weight: 2 }).addTo(map);
+
+        // Add markers at the start and end of the edge
+        L.circleMarker([from.lat, from.lng], { color: "red" }).addTo(map);
+        L.circleMarker([to.lat, to.lng], { color: "green" }).addTo(map);
+
+        // Wait for a delay before proceeding
+        await sleep(500);
+    }
+
+    // Recursive DFS function with visualization
+    async function dfs(node) {
+        while (adjCopy[node] && adjCopy[node].length > 0) {
+            let edge = adjCopy[node].pop(); // Get the next edge
+            let edgeKey = `${node}-${edge.node}`;  // Unique edge key
+            let reverseEdgeKey = `${edge.node}-${node}`;  // For undirected graph
+            console.log(edgeKey)
+
+            // Check if this edge has already been used
+            console.log()
+            if (!usedEdges.has(edgeKey) && !usedEdges.has(reverseEdgeKey)) {
+                usedEdges.add(edgeKey);  // Mark edge as used
+                if(!edge.matched){
+                    usedEdges.add(reverseEdgeKey);  // Mark reverse edge as used
+                }else{
+                    console.log("ayo", edgeKey)
+                }
+                await visualizeEdge(node, edge.node);
+                await dfs(edge.node);
+            }
+        }
+        circuit.push(node); // Add node to circuit after exploring all edges
+    }
+
+    await dfs(currentNode); // Start DFS traversal
+    return circuit.reverse(); // Reverse the circuit since we add nodes post-traversal
+}
+
+function visualiseGraph(graph, filter = []){
+    for (let node in graph){
+        if (node == '51.60239,-0.06451')console.log(graph[node])
+        if ((filter.length > 0 && filter.includes(node)) || filter.length == 0){
+            console.log(graph[node].length)
+            for (let to of graph[node]){
+                if (node == '51.60239,-0.06451')console.log(to)
+                convertToPolyline([node, to.node])
+            }
+        }
+    }
+}

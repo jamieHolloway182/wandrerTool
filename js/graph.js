@@ -110,3 +110,25 @@ function processKMLToGraph(kmlText) {
 
     return graph;
 }
+
+function getBoundsFromGraph(graph) {
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLng = Infinity;
+    let maxLng = -Infinity;
+
+    // Iterate over the keys in the graph
+    for (const key in graph) {
+        // Parse the lat,lng from the key (key format: "lat,lng")
+        const [lat, lng] = key.split(',').map(Number);
+
+        // Update the min/max latitudes and longitudes
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+        minLng = Math.min(minLng, lng);
+        maxLng = Math.max(maxLng, lng);
+    }
+
+    // Return the bounding box in the form [minLat, minLng, maxLat, maxLng]
+    return [minLat, minLng, maxLat, maxLng];
+}

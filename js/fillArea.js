@@ -385,7 +385,6 @@ function solveCPP(bbox) {
     console.log(subgraph)
     const {next} = floydWarshall(subgraph);
 
-    
     // 6. If the subgraph is disconnected, connect it using the full graph
     const s = structuredClone(subgraph)
     let components = getDisconnectedComponents(subgraph);
@@ -418,8 +417,6 @@ function solveCPP(bbox) {
         // 4. Add "virtual edges" to make degrees even
         console.log("Virtual Edges");
         addVirtualEdges(subgraph, matching);
-        
-
     }
     
     //5. Find the Eulerian Circuit on the modified subgraph
@@ -429,11 +426,10 @@ function solveCPP(bbox) {
 
     console.log("Replace Virtual edges")
     circuit = replaceVirtualEdgesWithRealPaths(circuit, subgraph, graph, radius, next)
-    convertToPolyline(circuit, subgraph)
-    console.log(circuit)
+    return circuit
 }
 
-function convertToPolyline(circuit, s) {
+function convertToPolyline(circuit) {
     const polylinePoints = [];
     
     // Iterate through the circuit and add the coordinates of each node
@@ -485,4 +481,16 @@ function reconstructPath(next, start, end) {
     }
 
     return path;
+}
+
+function createBoundingBox(lat1, lng1, lat2, lng2) {
+    
+    const bbox = [
+        Math.max(lat1, lat2),
+        Math.min(lng1, lng2),
+        Math.min(lat1, lat2),
+        Math.max(lng1, lng2) 
+    ];
+    
+    return bbox;
 }

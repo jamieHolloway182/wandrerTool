@@ -95,7 +95,6 @@ function aStar(start, end, graph) {
                 temp = cameFrom[temp];
             }
             path.push(start);
-            coordinates = path.reverse()
             return path.reverse();
         }
 
@@ -124,7 +123,6 @@ function aStar(start, end, graph) {
     }
 
     // No path found
-    coordinates = []
     return null;
 }
 

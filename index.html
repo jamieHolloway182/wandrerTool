@@ -45,6 +45,11 @@
         <script src="https://unpkg.com/hungarian-algorithm@1.0.0/dist/hungarian.js"></script>
         <script src="https://unpkg.com/@tmcw/togeojson"></script>
 
+        <script>
+            var map = L.map('map').setView([51.6000, 0.0000], 13); // Adjust view as needed
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        </script>
+
         <script src="./js/util.js"></script>
         <script src="./js/graph.js"></script>
         <script src="./js/kmz.js"></script>
