@@ -12,6 +12,24 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
     return Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 }
 
+function calculateNodeDistance(node1, node2) {
+    const [lat1, lng1] = node1.split(",").map(Number)
+    const [lat2, lng2] = node2.split(",").map(Number)
+    const R = 111320; // Approximate meters per degree of latitude
+
+    const deltaY = (lat2 - lat1) * R;
+    const deltaX = (lng2 - lng1) * R * Math.cos((lat1 + lat2) * Math.PI / 360); // Latitude midpoint adjustment
+
+    return Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+}
+
+function calculateManhattanDistance(key1, key2) {
+    const [x1, y1] = key1.split(',').map(Number);
+    const [x2, y2] = key2.split(',').map(Number);
+
+    return Math.abs(x1 - x2) + Math.abs(y1 - y2);
+}
+
 function aStarRadius(start, end, graph, radius) {
     const openSet = new MinHeap();
     const gScore = {}; // Stores the cost from start to each node
@@ -105,6 +123,27 @@ function getNearestNode(lat, lng, graph) {
     return nearestNode;
 }
 
+function getNearestOddNode(start, graph, excluded=[]) {
+    let nearestNode = null;
+    let minDistance = Infinity;
+    const [lat, lng] = start.split(',').map(Number);
+
+
+    // Iterate over all nodes in the graph and calculate the distance to the clicked position
+    for (const node in graph) {
+        const [nodeLat, nodeLng] = node.split(',').map(Number);
+        const distance = calculateDistance(lat, lng, nodeLat, nodeLng);
+
+        // Update nearest node if the distance is smaller
+        if (distance < minDistance && graph[node].length % 2 == 1 && !excluded.includes(node)) {
+            minDistance = distance;
+            nearestNode = node;
+        }
+    }
+
+    return nearestNode;
+}
+
 function saveAsJSFile(obj) {
     // Convert the graph object to a string
     const graphData = `${JSON.stringify(obj, null, 2)};`;
@@ -152,9 +191,9 @@ function coordinatesToGPX(coordinates, fileName = "route.gpx") {
 }
 
 
-function waitForDOMUpdate() {
+function waitForDOMUpdate(ms) {
     return new Promise(resolve => {
-        setTimeout(resolve, 0);
+        setTimeout(resolve, ms);
     });
 }
 
@@ -181,9 +220,7 @@ async function findEulerianCircuitWithVisualization(graph, map) {
     }
 
     // Helper function to delay execution
-    function sleep(ms) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
-    }
+    
 
     // Helper function to visualize the traversal
     async function visualizeEdge(fromCoord, toCoord) {
@@ -200,12 +237,12 @@ async function findEulerianCircuitWithVisualization(graph, map) {
         L.circleMarker([to.lat, to.lng], { color: "green" }).addTo(map);
 
         // Wait for a delay before proceeding
-        await sleep(500);
+        await sleep(5);
     }
 
     // Recursive DFS function with visualization
     async function dfs(node) {
-        while (adjCopy[node] && adjCopy[node].length > 0) {
+        while (adjCopy[node] && adjCopy[node].length > 0 && adjCopy[node].find(n => !n.deadend)) {
             let edge = adjCopy[node].pop(); // Get the next edge
             let edgeKey = `${node}-${edge.node}`;  // Unique edge key
             let reverseEdgeKey = `${edge.node}-${node}`;  // For undirected graph
@@ -213,7 +250,7 @@ async function findEulerianCircuitWithVisualization(graph, map) {
 
             // Check if this edge has already been used
             console.log()
-            if (!usedEdges.has(edgeKey) && !usedEdges.has(reverseEdgeKey)) {
+            if (!usedEdges.has(edgeKey) && !usedEdges.has(reverseEdgeKey) && !edge.deadend) {
                 usedEdges.add(edgeKey);  // Mark edge as used
                 if(!edge.matched){
                     usedEdges.add(reverseEdgeKey);  // Mark reverse edge as used
@@ -225,21 +262,402 @@ async function findEulerianCircuitWithVisualization(graph, map) {
             }
         }
         circuit.push(node); // Add node to circuit after exploring all edges
+        console.log( adjCopy[node].length)
+        for (let n = 0; n < adjCopy[node].length; n++){
+            console.log(n)
+            if (adjCopy[node][n].deadend){
+                circuit.push(adjCopy[node][n].node)
+                circuit.push(node)
+                adjCopy[node].splice(n, 1)
+            }
+        }
     }
 
     await dfs(currentNode); // Start DFS traversal
+    console.log("gay")
+    console.log(circuit)
     return circuit.reverse(); // Reverse the circuit since we add nodes post-traversal
 }
 
 function visualiseGraph(graph, filter = []){
     for (let node in graph){
-        if (node == '51.60239,-0.06451')console.log(graph[node])
         if ((filter.length > 0 && filter.includes(node)) || filter.length == 0){
-            console.log(graph[node].length)
             for (let to of graph[node]){
-                if (node == '51.60239,-0.06451')console.log(to)
-                convertToPolyline([node, to.node])
+                convertToPolyline([node, to.node]).addTo(map)
             }
         }
     }
+}
+
+function visualiseGraphWithMarker(graph, filter = []){
+    for (let node in graph){
+        if ((filter.length > 0 && filter.includes(node)) || filter.length == 0){
+            L.marker(node.split(",")).addTo(map).bindPopup(node)
+            for (let to of graph[node]){
+                convertToPolyline([node, to.node]).addTo(map)
+            }
+        }
+    }
+}
+
+function getGraphDistance(graph) {
+    const visitedEdges = new Set(); // Track visited edges to prevent duplicates
+    let totalDistance = 0;
+
+    for (const [node, edges] of Object.entries(graph)) {
+        for (const edge of edges) {
+            if(!edge.virtual){
+
+                const otherNode = edge.node; // Neighbor node
+                const edgeKey = `${Math.min(node, otherNode)},${Math.max(node, otherNode)}`; // Canonical key for edge
+                
+                if (!visitedEdges.has(edgeKey)) {
+                    visitedEdges.add(edgeKey);
+                    
+                    // Extract coordinates for both nodes
+                    const [lat1, lng1] = node.split(',').map(Number);
+                    const [lat2, lng2] = otherNode.split(',').map(Number);
+                    
+                    // Calculate the distance and add to the total
+                    totalDistance += calculateDistance(lat1, lng1, lat2, lng2);
+                }
+            }
+        }
+    }
+
+    return totalDistance;
+}
+
+function calculateGraphCenter(graph) {
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLng = Infinity;
+    let maxLng = -Infinity;
+
+    // Iterate over all nodes in the graph to find the min and max latitudes and longitudes
+    for (const node in graph) {
+        const [lat, lng] = node.split(',').map(Number);
+
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+    }
+
+    // Calculate the center of the graph (the midpoint of the bounding box)
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLng = (minLng + maxLng) / 2;
+
+    return { centerLat, centerLng };
+}
+
+function calculateBBoxCenter(bbox) {
+    const [topLeftLat, topLeftLng, bottomRightLat, bottomRightLng] = bbox;
+    
+    const centerLat = (topLeftLat + bottomRightLat) / 2;
+    const centerLng = (topLeftLng + bottomRightLng) / 2;
+    
+    return {centerLat, centerLng};
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+map.on('click', (e) => {
+    console.log(getNearestNode(e.latlng.lat, e.latlng.lng, graph))
+})
+
+function convertToPolyline(circuit, color='green') {
+    const polylinePoints = [];
+    
+    // Iterate through the circuit and add the coordinates of each node
+    for (let i = 0; i < circuit.length ; i++) {
+        let node = circuit[i];
+        let coords = node.split(","); // Assuming the node is in the form "lat,lng"
+        polylinePoints.push([parseFloat(coords[0]), parseFloat(coords[1])]);
+    }
+    
+    // Create a polyline using Leaflet
+    const polyline = L.polyline(polylinePoints, { color: color }).addTo(map);
+    
+    return polyline;
+}
+
+function splitGraphIntoCyclicAndAcyclic(graph) {
+    let visited = new Set();
+    let inCycle = new Set(); // Nodes in the cyclic component
+    let cyclicComponent = {}; // The cyclic subgraph
+    let acyclicSubgraphs = []; // Array of acyclic subgraphs
+
+    // Helper to detect cycles using DFS
+    function dfsCycleDetection(node, parent, path) {
+        visited.add(node);
+        path.add(node);
+
+        for (let edge of graph[node]) {
+            let neighbor = edge.node;
+
+            // If the neighbor is in the current path, we've found a cycle
+            if (path.has(neighbor)) {
+                inCycle.add(node);
+                inCycle.add(neighbor);
+            } else if (!visited.has(neighbor)) {
+                dfsCycleDetection(neighbor, node, path);
+            }
+        }
+
+        path.delete(node); // Backtrack
+    }
+
+    // Step 1: Detect nodes in cycles
+    for (let node in graph) {
+        if (!visited.has(node)) {
+            dfsCycleDetection(node, null, new Set());
+        }
+    }
+
+    // Step 2: Build the cyclic component
+    for (let node of inCycle) {
+        cyclicComponent[node] = graph[node].filter(edge => inCycle.has(edge.node));
+    }
+
+    // Step 3: Extract acyclic subgraphs
+    visited = new Set(inCycle); // Start fresh, but skip cyclic nodes
+    function collectAcyclicSubgraph(startNode) {
+        let subgraph = {};
+        let stack = [startNode];
+        visited.add(startNode);
+
+        while (stack.length > 0) {
+            let node = stack.pop();
+            subgraph[node] = [];
+
+            for (let edge of graph[node]) {
+                subgraph[node].push(edge);
+                if (!visited.has(edge.node) && !inCycle.has(edge.node)) {
+                    stack.push(edge.node);
+                    visited.add(edge.node);
+                }
+            }
+        }
+
+        return subgraph;
+    }
+
+    for (let node in graph) {
+        if (!visited.has(node)) {
+            acyclicSubgraphs.push(collectAcyclicSubgraph(node));
+        }
+    }
+
+    return {
+        cyclicComponent,
+        acyclicSubgraphs
+    };
+}
+
+function greedyMatchingHeuristic(oddNodes){
+    const matched = new Set();
+    const pairs = [];
+
+    while (oddNodes.length > 1) {
+        let minDist = Infinity;
+        let pair = [];
+        for (let i = 0; i < oddNodes.length; i++) {
+            for (let j = i + 1; j < oddNodes.length; j++) {
+                let nodeA = oddNodes[i];
+                let nodeB = oddNodes[j];
+                if (!matched.has(nodeA) && !matched.has(nodeB)) {
+                    let distance = calculateManhattanDistance(nodeA, nodeB);
+                    if (distance < minDist) {
+                        minDist = distance;
+                        pair = [nodeA, nodeB];
+                    }
+                }
+            }
+        }
+        matched.add(pair[0]);
+        matched.add(pair[1]);
+        pairs.push(pair);
+        oddNodes = oddNodes.filter(node => !matched.has(node)); // Remove paired nodes
+    }
+
+    return pairs;
+}
+
+function replaceVirtualEdgesWithRealPathsHeuristic(eulerianCircuit, subgraph, fullGraph, radius) {
+    let realPath = [];
+    console.log(eulerianCircuit, "hey")
+    for (let i = 0; i < eulerianCircuit.length - 1; i++) {
+        console.log(i, eulerianCircuit.length)
+        const from = eulerianCircuit[i];
+        const to = eulerianCircuit[i + 1];
+
+        // Check if the edge is virtual
+        const node = (subgraph[from].find(o => o.node == to));
+
+        
+        if (node){
+            console.log("node")
+            if (node.virtual) {
+                console.log("virtual")
+                // Replace virtual edge with real path using aStar
+                var realSubPath = aStarRadius(from, to, fullGraph, radius);
+                if (realSubPath) {
+                    // Add the real path (omit the first node to avoid duplication)
+                    realPath.push(...realSubPath.slice(0, realSubPath.length - 1));
+                } else {
+                    console.error("Failed to find real path for virtual edge: ${from} -> ${to}");
+                    realPath.push(from)
+                }
+            } else {
+                // Add direct edge for non-virtual connections
+                console.log("real")
+                realPath.push(from);
+            }
+        }else{
+            console.log("no node", fullGraph[from].find(o => o.node == to))
+            var realSubPath = aStarRadius(from, to, fullGraph, radius);
+            if (realSubPath){
+                realPath.push(...realSubPath.slice(0, realSubPath.length - 1));
+            }else {
+                console.error("Failed to find replacement path: ${from} -> ${to}");
+                realPath.push(from)
+            }
+        }
+    }
+
+    // Add the last node to complete the circuit
+    realPath.push(eulerianCircuit[eulerianCircuit.length - 1]);
+
+    return realPath;
+}
+
+function dfsWithBacktracking(graph, startNode) {
+    let visited = new Set();    // To keep track of visited nodes
+    let order = [];             // To store the search order, including backtracking
+
+    function dfs(node) {
+        order.push(node);       // Visit the current node
+        visited.add(node);
+
+        for (let edge of graph[node] || []) {
+            let neighbor = edge.node;
+            if (!visited.has(neighbor)) {
+                dfs(neighbor);  // Recursive call for unvisited neighbors
+                order.push(node); // Backtracking to the current node
+            }
+        }
+    }
+
+    dfs(startNode);
+    return order;
+}
+
+function dfsVisitEveryEdge(graph, startNode) {
+    let visitedNodes = new Set(); // To keep track of visited nodes
+    let visitedEdges = new Set(); // To track visited edges (undirected edges)
+    let order = [];               // To store the order of visits, including edges
+
+    function dfs(node) {
+        visitedNodes.add(node);
+        order.push(node);
+
+        for (let edge of graph[node] || []) {
+            let neighbor = edge.node;
+            let edgeKey = node < neighbor ? `${node}-${neighbor}` : `${neighbor}-${node}`;
+
+            if (!visitedEdges.has(edgeKey)) {
+                // Mark the edge as visited
+                visitedEdges.add(edgeKey);
+
+                // Visit the neighbor
+                dfs(neighbor);
+
+                // Backtrack: Add the edge again for the reverse direction
+                order.push(node);
+            }
+        }
+    }
+
+    dfs(startNode);
+    return order;
+}
+
+function isPalindromeArray(arr) {
+    let n = arr.length;
+    for (let i = 0; i < n / 2; i++) {
+        if (arr[i] !== arr[n - i - 1]) {
+            return false; // If any mismatch is found, it's not a palindrome
+        }
+    }
+    return true; // If no mismatches are found, it's a palindrome
+}
+
+function sliceFromToNext(arr, firstIndex) {
+    let value = arr[firstIndex]
+    let nextIndex = arr.indexOf(value, firstIndex + 1); // Find the next occurrence after the first
+
+    // Return the slice if both occurrences exist; otherwise, return an empty array
+    if (firstIndex !== -1 && nextIndex !== -1) {
+        return arr.slice(firstIndex, nextIndex + 1);
+    }
+    return [];
+}
+
+function convertToPolyline(circuit, color = "green") {
+    const polylinePoints = [];
+    
+    // Iterate through the circuit and add the coordinates of each node
+    for (let i = 0; i < circuit.length ; i++) {
+        let node = circuit[i];
+        let coords = node.split(","); // Assuming the node is in the form "lat,lng"
+        polylinePoints.push([parseFloat(coords[0]), parseFloat(coords[1])]);
+    }
+    
+    // Create a polyline using Leaflet
+    const polyline = L.polyline(polylinePoints, { color: color }).addTo(map);
+    
+    return polyline;
+}
+
+function convertToPolylineDelay(circuit, color = "green", ms=1) {
+    const polylinePoints = [];
+    
+    // Iterate through the circuit and add the coordinates of each node
+    for (let i = 0; i < circuit.length ; i++) {
+        let node = circuit[i];
+        let coords = node.split(","); // Assuming the node is in the form "lat,lng"
+        polylinePoints.push([parseFloat(coords[0]), parseFloat(coords[1])]);
+        waitForDOMUpdate(ms)
+    }
+    
+    // Create a polyline using Leaflet
+    const polyline = L.polyline(polylinePoints, { color: color }).addTo(map);
+    
+    return polyline;
+}
+
+function filterPath(path, graph) {
+    // Helper function to count edges for a node
+    function countEdges(node) {
+        return graph[node] ? graph[node].length : 0;
+    }
+
+    return countEdges(path[0]) == 1 || countEdges(path[path.length - 1]) == 1;
+}
+
+function halvePalindrome(arr) {
+    // Check if the array is a palindrome (optional)
+    if (arr.join('') !== arr.reverse().join('')) {
+        throw new Error("The array is not a palindrome");
+    }
+
+    // Return the first half of the array
+    return arr.slice(0, Math.ceil(arr.length / 2));
+}
+
+function isCircle(graph) {
+    return Object.keys(graph).every(node => graph[node].length === 2);
 }

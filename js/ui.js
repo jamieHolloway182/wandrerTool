@@ -29,6 +29,8 @@ const button2 = document.getElementById('button2');
 var mode = "path"
 
 function toggleButtons(selectedButton, otherButton) {
+    let button = document.getElementById("routeButton")
+    button.innerHTML = "+"
     // Highlight the selected button and disable the other
     selectedButton.classList.add('active');
     otherButton.classList.remove('active');
@@ -41,6 +43,8 @@ function toggleButtons(selectedButton, otherButton) {
 
     selectedButton.style.color = "black"
     otherButton.style.color = "black"
+
+    clickCount = 0
 
     clearMap()
 }
@@ -98,12 +102,14 @@ function handleFileUpload(event) {
 function finishUpload(){
     const loadingCircle = document.getElementById("loadingContainer")
     const removeButton = document.getElementById("removeFileButton")
-    const mapElement = document.getElementById("map")
-
+    const routeButton = document.getElementById("routeButton")
+    const text = document.getElementById("text")
     
     loadingCircle.style.display = "none"
     removeButton.style.display = "flex"
-    mapElement.style.cursor = "pointer"
+    routeButton.style.cursor = "pointer"
+
+    text.innerHTML = "Press add button to start"
 
     uploaded = true
 
@@ -125,13 +131,37 @@ function finishUpload(){
 function removeFile() {
     const fileInput = document.getElementById("kmzUploader");
     const removeButton = document.getElementById("removeFileButton");
-    const map = document.getElementById("map")
 
     fileInput.value = ""; // Clear the file input value
     fileInput.disabled = false
     removeButton.style.display = 'none'; // Hide the "Remove File" button
-    map.style.cursor = "pointer"
 
     uploaded = false
+    clicking = false
     clearMap(true)
 }
+
+function toggleRouteButton(bool){
+    let button = document.getElementById("routeButton")
+    let map = document.getElementById("map")
+    let text = document.getElementById("text")
+
+    if(bool){
+        button.innerHTML = "+"
+        map.style.cursor = "auto"
+        text.innerHTML = "Press add button to start"
+    }else{
+        button.innerHTML = "X"
+        map.style.cursor = "pointer"
+        text.innerHTML = "Place start position"
+    }
+    clearMap()
+    clickCount = 0
+    clicking = !clicking
+}
+
+document.getElementById("routeButton").addEventListener('click', () => {
+    if(uploaded){
+        toggleRouteButton(clicking)
+    }
+})

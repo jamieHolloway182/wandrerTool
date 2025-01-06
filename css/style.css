@@ -10,6 +10,10 @@ html, body {
     cursor: auto
 }
 
+.leaflet-clickable {
+    cursor: crosshair !important;
+  }
+
 /* Slider container */
 .ui {
     position: absolute;
@@ -38,6 +42,10 @@ html, body {
 
 #slider {
     width: 85%;
+}
+
+#sliderLabel{
+    text-align: end;
 }
 
 #downloadButton {
@@ -141,4 +149,20 @@ html, body {
     100% {
         transform: rotate(360deg); /* Rotate 360 degrees */
     }
+}
+
+#routeButton {
+    margin-top: 10px;
+    width: 20%;
+    align-self: flex-end;
+    padding: 10px 20px;
+    background-color: #007bff;
+    border: 1px solid black; /* Add black border */
+    border-radius: 5px;
+    display: flex;
+    justify-content: center;
+}
+
+#text{
+    text-align: end;
 }

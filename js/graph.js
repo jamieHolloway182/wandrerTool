@@ -1,7 +1,8 @@
 var graph = {}
+var precisionValue = 5
 
 // Function to process the KML text and create a graph
-function findOrInsertNode(lat, lng, graph) {
+function findOrInsertNode(lat, lng, graph, precision=precisionValue) {
     const coord = getRoundedKey(lat, lng);
 
     const offsets = [
@@ -14,19 +15,19 @@ function findOrInsertNode(lat, lng, graph) {
     for (const offset of offsets) {
         const adjustedLat = roundCoordinate(coord[0] + offset[0]);
         const adjustedLng = roundCoordinate(coord[1] + offset[1]);
-        checkKey = `${adjustedLat.toFixed(5)},${adjustedLng.toFixed(5)}`;
+        checkKey = `${adjustedLat.toFixed(precision)},${adjustedLng.toFixed(precision)}`;
         if (graph[checkKey]) {
             return checkKey;
         }
     }
 
     // Create a new key for the node
-    const key = `${coord[0].toFixed(5)},${coord[1].toFixed(5)}`;
+    const key = `${coord[0].toFixed(precision)},${coord[1].toFixed(precision)}`;
     graph[key] = [];
     return key;
 }
 
-function roundCoordinate(value, precision = 5) {
+function roundCoordinate(value, precision = precisionValue) {
     return parseFloat(value.toFixed(precision));
 }
 
