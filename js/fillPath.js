@@ -123,7 +123,7 @@ function aStar(start, end, graph) {
     }
 
     // No path found
-    return null;
+    return [];
 }
 
 // Min-Heap class for A* priority queue

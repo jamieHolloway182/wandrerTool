@@ -364,9 +364,6 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-map.on('click', (e) => {
-    console.log(getNearestNode(e.latlng.lat, e.latlng.lng, graph))
-})
 
 function convertToPolyline(circuit, color='green') {
     const polylinePoints = [];
@@ -661,3 +658,136 @@ function halvePalindrome(arr) {
 function isCircle(graph) {
     return Object.keys(graph).every(node => graph[node].length === 2);
 }
+
+const calculateCentroid = (polygon) => {
+    let xSum = 0, ySum = 0;
+    polygon.forEach(([x, y]) => {
+      xSum += x;
+      ySum += y;
+    });
+    return [xSum / polygon.length, ySum / polygon.length];
+  };
+
+  function calculateAngle([cx, cy], [x, y]) {
+    return Math.atan2(y - cy, x - cx);
+  }
+
+  // Calculate internal angle between three points (in degrees)
+  function calculateAngleBetween(p1, p2, p3) {
+    const a = Math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2);
+    const b = Math.sqrt((p2[0] - p3[0]) ** 2 + (p2[1] - p3[1]) ** 2);
+    const c = Math.sqrt((p3[0] - p1[0]) ** 2 + (p3[1] - p1[1]) ** 2);
+    const angle = Math.acos((a ** 2 + b ** 2 - c ** 2) / (2 * a * b));
+    return (angle * 180) / Math.PI;
+  }
+
+  // Order points to minimize internal angles
+  function orderPointsMinimizingAngles(points) {
+    const centroid = calculateCentroid(points);
+
+    // Sort points radially around the centroid
+    points.sort((a, b) => calculateAngle(centroid, a) - calculateAngle(centroid, b));
+
+    // Check and adjust for internal angles
+    for (let i = 0; i < points.length; i++) {
+      const prev = points[(i - 1 + points.length) % points.length];
+      const current = points[i];
+      const next = points[(i + 1) % points.length];
+
+      const angle = calculateAngleBetween(prev, current, next);
+
+      // If the angle is too sharp (e.g., < 10 degrees), flip order locally
+      if (angle < 10) {
+        [points[i], points[(i + 1) % points.length]] = [points[(i + 1) % points.length], points[i]];
+      }
+    }
+
+    return points;
+  }
+
+  function orientation(p, q, r) {
+    const val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1]);
+    if (val === 0) return 0;  // collinear
+    return (val > 0) ? 1 : 2;  // clockwise or counterclockwise
+  }
+
+  // Check if point q lies on segment pr
+  function onSegment(p, q, r) {
+    return (q[0] <= Math.max(p[0], r[0]) && q[0] >= Math.min(p[0], r[0]) &&
+            q[1] <= Math.max(p[1], r[1]) && q[1] >= Math.min(p[1], r[1]));
+  }
+
+  // Check if two line segments (p1-p2) and (p3-p4) intersect
+  function doIntersect(p1, p2, p3, p4) {
+    const o1 = orientation(p1, p2, p3);
+    const o2 = orientation(p1, p2, p4);
+    const o3 = orientation(p3, p4, p1);
+    const o4 = orientation(p3, p4, p2);
+
+    if (o1 !== o2 && o3 !== o4) return true;
+    if (o1 === 0 && onSegment(p1, p3, p2)) return true;
+    if (o2 === 0 && onSegment(p1, p4, p2)) return true;
+    if (o3 === 0 && onSegment(p3, p1, p4)) return true;
+    if (o4 === 0 && onSegment(p3, p2, p4)) return true;
+
+    return false;
+  }
+
+  // Check if a polygon has intersecting edges
+  function hasIntersectingEdges(polygon) {
+    const n = polygon.length;
+    for (let i = 0; i < n; i++) {
+      const p1 = polygon[i];
+      const p2 = polygon[(i + 1) % n];  // Next point (wrap around)
+      for (let j = i + 2; j < n; j++) {
+        const p3 = polygon[j];
+        const p4 = polygon[(j + 1) % n];  // Next point (wrap around)
+
+        // Skip adjacent edges
+        if (i === 0 && j === n - 1) continue;
+
+        if (doIntersect(p1, p2, p3, p4)) {
+          return true;  // If any pair of edges intersect
+        }
+      }
+    }
+    return false;
+  }
+
+  const calculateBoundingRadius = (polygon, centroid) => {
+    const [cx, cy] = centroid;
+    return Math.max(...polygon.map(([x, y]) => calculateDistance(cx, cy, x, y)));
+  };
+
+  const isPointInPolygon = (point, polygon) => {
+    const [px, py] = point;
+    let isInside = false;
+  
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const [x1, y1] = polygon[i];
+      const [x2, y2] = polygon[j];
+  
+      const intersects = ((y1 > py) !== (y2 > py)) &&
+        (px < ((x2 - x1) * (py - y1)) / (y2 - y1) + x1);
+  
+      if (intersects) {
+        isInside = !isInside;
+      }
+    }
+  
+    return isInside;
+  };
+  
+  const isPointInPolygonWithRadius = (point, polygon) => {
+    const centroid = calculateCentroid(polygon);
+    const boundingRadius = calculateBoundingRadius(polygon, centroid);
+    const [px, py] = point;
+    const [cx, cy] = centroid;
+  
+    // Quick bounding radius check
+    const distance = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+    if (distance > boundingRadius) return false;
+  
+    // Perform full point-in-polygon test
+    return isPointInPolygon(point, polygon);
+  };

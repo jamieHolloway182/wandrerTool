@@ -5,18 +5,14 @@ function isPointInBBox(lat, lng, bbox) {
 }
 
 // Create the subgraph with edges that go beyond the bounding box
-function createSubgraph(graph, bbox, removeTraveled) {
+function createSubgraph(graph, bbox, removeTraveled, radius) {
     let subgraph = {};
     
     // Filter out nodes in the bbox and initialize empty edges for them
     for (let node in graph) {
-        let coords = node.split(",");  // Assuming node format is "lat,lng"
-        let lat = parseFloat(coords[0]);
-        let lng = parseFloat(coords[1]);
-
 
         // Check if node is within the bounding box
-        if (isPointInBBox(lat, lng, bbox) && (graph[node].find(o => !o.traveled || !removeTraveled))) {
+        if (isPointInPolygonWithRadius(node.split(",").map(Number), bbox, radius) && (graph[node].find(o => !o.traveled || !removeTraveled))) {
             subgraph[node] = [];  // Initialize empty edges for this node
         }
     }
@@ -474,7 +470,9 @@ function greedyMatching(oddNodes, dist, graph) {
         let pair = [];
         
         // Iterate over all pairs of odd nodes
+        console.log(oddNodes)
         for (let i = 0; i < oddNodes.length; i++) {
+            console.log(i)
             for (let j = i + 1; j < oddNodes.length; j++) {
                 let nodeA = oddNodes[i];
                 let nodeB = oddNodes[j];
@@ -578,23 +576,9 @@ function replaceVirtualEdgesWithRealPaths(eulerianCircuit, subgraph, fullGraph, 
 }
 
 function drawBoundingBox(map, bbox) {
-    const [topLeftLat, topLeftLng, bottomRightLat, bottomRightLng] = bbox;
-
-    // Define the bounds for the rectangle
-    const bounds = [
-        [topLeftLat, topLeftLng], // Top-left corner
-        [bottomRightLat, bottomRightLng] // Bottom-right corner
-    ];
-
-    // Draw the rectangle on the map
-    const rectangle = L.rectangle(bounds, {
-        color: "blue", // Border color
-        weight: 2,     // Border width
-        fillOpacity: 0 // Transparency for the fill
-    }).addTo(map);
-
-    // Optionally, fit the map to the rectangle's bounds
-    map.fitBounds(bounds);
+    for (let i = 0; i < bbox.length - 1; i++){
+        L.polyline([bbox[i], bbox[i+1]]).addTo(map)
+    }
 }
 
 function recursivelyRemovePalindromes(arr, graph, component) {
@@ -896,9 +880,12 @@ function traverseTreeToEnd(tree, path) {
     return order;
 }
 
-function CPP(subgraph, start, end, radius){
+function CPP(subgraph, start, end, radius) {
 
-    const {next} = floydWarshall(subgraph);
+    // Time the Floyd-Warshall step
+    console.time("Floyd Warshall");
+    const {dist, next} = floydWarshall(subgraph);
+    console.timeEnd("Floyd Warshall");
 
     let oddNodes = [];
     for (let node in subgraph) {
@@ -907,164 +894,195 @@ function CPP(subgraph, start, end, radius){
         }
     }
 
-     if (oddNodes.length > 0) {
-        // Use Floyd-Warshall or Dijkstra to compute shortest paths between all nodes
-        console.log("Floyd Warshall");
-        const {dist} = floydWarshall(subgraph);
-
-        // 3. Use greedy matching to pair the odd-degree nodes
+    if (oddNodes.length > 0) {
+        // Time the greedy matching step
+        console.time("Greedy Matching");
         console.log("Greedy Matching");
         let matching = greedyMatching(oddNodes, dist, subgraph);
+        console.timeEnd("Greedy Matching");
 
-        // 4. Add "virtual edges" to make degrees even
+        // Time the add virtual edges step
+        console.time("Add Virtual Edges");
         addVirtualEdges(subgraph, matching);
+        console.timeEnd("Add Virtual Edges");
     }
 
+    // Time the Eulerian circuit finding step
+    console.time("Eulerian Circuit");
     console.log("Eulerian Circuit");
-    circuit = findEulerianPath(structuredClone(subgraph), start);
+    let circuit = findEulerianPath(structuredClone(subgraph), start);
+    console.timeEnd("Eulerian Circuit");
 
-    console.log("Replace Virtual edges")
-    circuit = replaceVirtualEdgesWithRealPaths(circuit, subgraph, graph, radius, next)
+    // Time the replace virtual edges with real paths step
+    console.time("Replace Virtual Edges");
+    console.log("Replace Virtual Edges");
+    circuit = replaceVirtualEdgesWithRealPaths(circuit, subgraph, graph, radius, next);
+    console.timeEnd("Replace Virtual Edges");
 
-    return circuit
-
+    return circuit;
 }
     
 // Main function to solve the CPP on the subgraph
 function solveCPP(bbox) {
-    console.log("Starting CPP")
+    console.log("Starting CPP");
 
-    const radius = calculateBBoxMaxLength(bbox) * 2
+    console.time("Overall Time");
 
-    let subgraph = createSubgraph(graph, bbox, true);
-    
+    const centroid = calculateCentroid(bbox)
+    const radius = calculateBoundingRadius(bbox, centroid) * 1.5;
+    console.log(radius)
+
+    console.time("Subgraph Creation");
+    let subgraph = createSubgraph(graph, bbox, true, radius);
+    console.timeEnd("Subgraph Creation");
+
+    console.time("Find Components");
     let components = getDisconnectedComponents(subgraph);
-    components = components.filter(c => c.length > 1)
-    components = removeFullyDisconnectedComponents(components, graph, subgraph, radius)
+    console.log(components)
+    components = components.filter(c => c.length > 1);
+    components = removeFullyDisconnectedComponents(components, graph, subgraph, radius);
+    console.log(components)
+    console.timeEnd("Find Components");
 
-    let {path, closestNodes} = approximatePath(components)
-    console.log(path, closestNodes)
-    let overallRoute = []
+    console.time("Approximate Path");
+    let { path, closestNodes } = approximatePath(components);
+    console.timeEnd("Approximate Path");
 
-    let componentsRoute = []
+    console.log(path, closestNodes);
+    let overallRoute = [];
+    let componentsRoute = [];
+    let paths = []
 
-    for (let i = 0; i < components.length; i++){
-        console.log(i)
-        let c = components[path[i]]
+    for (let i = 0; i < components.length; i++) {
+        console.log(`Processing Component ${i}`);
+        console.time(`Component ${i} Time`);
 
-        let search = dfsVisitEveryEdge(structuredClone(subgraph), c[0])
-        var {result, removedPalindromes, graphCopy} = recursivelyRemovePalindromes(search, structuredClone(subgraph), c)
-        console.log(removedPalindromes)
-        let deadendComponent = isDeadendComponent(c, removedPalindromes)
+        let c = components[path[i]];
+
+        console.time("DFS Visit Every Edge");
+        let search = dfsVisitEveryEdge(structuredClone(subgraph), c[0]);
+        console.timeEnd("DFS Visit Every Edge");
+
+        console.time("Remove Palindromes");
+        var { result, removedPalindromes, graphCopy } = recursivelyRemovePalindromes(search, structuredClone(subgraph), c);
+        console.timeEnd("Remove Palindromes");
+
+        console.log("Removed Palindromes:", removedPalindromes);
+
+        let deadendComponent = isDeadendComponent(c, removedPalindromes);
 
         let start, end, entrancePath, exitPath;
 
-        if (i == 0){
-            start = c[0]
-        }else{
-            start = closestNodes[i - 1][1]
-            let previousEnd = closestNodes[i - 1][0]
-            entrancePath = aStarRadius(previousEnd, start, graph, radius)
-        }
-        if (i == components.length - 1){
-            end = c[0]
-        }else{
-            end = closestNodes[i][0]
-            let nextStart = closestNodes[i][1]
-            exitPath = aStarRadius(end, nextStart, graph, radius)
+
+        if (i == 0) {
+            start = c[0];
+        } else {
+            start = closestNodes[i - 1][1];
+            entrancePath = paths[i - 1]
         }
 
-        if (deadendComponent){
-            if (i > 0){
-                for (let n of entrancePath){
-                    if (c.includes(n)){
-                        start = n
+        if (i == components.length - 1) {
+            end = c[0];
+        } else {
+            end = closestNodes[i][0];
+        }
+        
+        if (deadendComponent) {
+            
+            if (i > 0) {
+                for (let n of entrancePath) {
+                    if (c.includes(n)) {
+                        start = n;
+                        const index = entrancePath.indexOf(n);
+                        entrancePath = entrancePath.slice(0, index);
+                        paths[i - 1] = entrancePath
                         break;
                     }
                 }
             }
 
-            if (i != components.length - 1){
-                for (let n of exitPath.reverse()){
-                    if (c.includes(n)){
-                        end = n
+            if (i != components.length - 1) {
+                console.time("Exit Path");
+                let nextStart = closestNodes[i][1];
+                exitPath = aStarRadius(end, nextStart, graph, radius);
+                console.timeEnd("Exit Path");
+                for (let n of exitPath.reverse()) {
+                    if (c.includes(n)) {
+                        end = n;
+                        const index = exitPath.indexOf(n);
+                        exitPath = exitPath.slice(0, index + 1);
                         break;
                     }
                 }
+                paths.push(exitPath.reverse())
             }
 
             let route;
-            if(start == end){
-                route = dfsVisitEveryEdge(structuredClone(subgraph), start)
-            }else{
-                let tree = createTree(subgraph, start)
-                let path = findTreePath(tree, end)
-                route = traverseTreeToEnd(tree, path)
+            if (start === end) {
+                route = dfsVisitEveryEdge(structuredClone(subgraph), start);
+            } else {
+                let tree = createTree(subgraph, start);
+                let path = findTreePath(tree, end);
+                route = traverseTreeToEnd(tree, path);
             }
-            componentsRoute.push(route)
-        }else{
-            console.log("circ", c , removedPalindromes)
+            componentsRoute.push(route);
+        } else {
+            console.log("Processing Circuit");
+            console.time("Process Circuit");
             let circuit;
-            if (isCircle(graphCopy)){
-                console.log(start, end, "Hyeyeyeyy")
-                start = getNearestNode(...start.split(",").map(Number), graphCopy)
-                end = getNearestNode(...end.split(",").map(Number), graphCopy)
-                circuit = findCirclePath(structuredClone(graphCopy), start, end)
-            }else{
-
-                start = getNearestOddNode(start, graphCopy)
-                end = getNearestOddNode(end, graphCopy, [start])
-                
-                visualiseGraph(graphCopy)
-                console.log(graphCopy)
-                circuit = CPP(graphCopy, start, end)
-                
+            if (isCircle(graphCopy)) {
+                start = getNearestNode(...start.split(",").map(Number), graphCopy);
+                end = getNearestNode(...end.split(",").map(Number), graphCopy);
+                circuit = findCirclePath(structuredClone(graphCopy), start, end);
+            } else {
+                start = getNearestOddNode(start, graphCopy);
+                end = getNearestOddNode(end, graphCopy, [start]);
+                circuit = CPP(graphCopy, start, end);
             }
-            while(removedPalindromes.length > 0){
-                let flag= false
-                for (let i = 0; i < removedPalindromes.length; i++){
-                    let index = circuit.findIndex(n => n == removedPalindromes[i].fullPalindrome[0])
-                    if (index != -1){
-                        flag=  true
-                        let toEnter = removedPalindromes[i].fullPalindrome.slice(1)
-                        circuit.splice(index + 1, 0, ...toEnter)
-                        removedPalindromes.splice(i,1)
+            while (removedPalindromes.length > 0) {
+                let flag = false;
+                for (let i = 0; i < removedPalindromes.length; i++) {
+                    let index = circuit.findIndex(n => n == removedPalindromes[i].fullPalindrome[0]);
+                    if (index != -1) {
+                        flag = true;
+                        let toEnter = removedPalindromes[i].fullPalindrome.slice(1);
+                        circuit.splice(index + 1, 0, ...toEnter);
+                        removedPalindromes.splice(i, 1);
                     }
                 }
-                if(!flag){
-                    console.log(circuit, removedPalindromes)
+                if (!flag) {
+                    console.log(circuit, removedPalindromes);
                     break;
                 }
             }
-            componentsRoute.push(circuit)
+            componentsRoute.push(circuit);
+
+            let nextStart = closestNodes[i][1];
+            exitPath = aStarRadius(end, nextStart, graph, radius);
+            paths.push(exitPath)
+
+            let previousComp = componentsRoute[i - 1]
+            let previousEnd = previousComp[previousComp.length - 1]
+            entrancePath = aStarRadius(previousEnd, start, graph, radius)
+            paths[i - 1] = entrancePath
+
+            console.timeEnd("Process Circuit");
         }
+
+        console.timeEnd(`Component ${i} Time`);
     }
 
-    for (let i = 0; i < componentsRoute.length; i++){
-        let connection;
-        if (i > 0){
-            let prev = componentsRoute[i - 1]
-            connection = aStarRadius(prev[prev.length - 1], componentsRoute[i][0], graph, radius)
-            connection = connection.slice(1, connection.length - 1)
-        }else{
-            connection = []
-        }
-        overallRoute = [...overallRoute, ...connection]
-        overallRoute = [...overallRoute, ...componentsRoute[i]]
+    console.time("Combine Routes");
+    console.log(paths)
+    paths.push([])
+    for (let i = 0; i < componentsRoute.length; i++) {
+        overallRoute = [...overallRoute, ...componentsRoute[i], ...paths[i]];
     }
+    console.timeEnd("Combine Routes");
 
-    return overallRoute
-}
+    console.timeEnd("Overall Time");
 
-function calculateBBoxMaxLength(bbox) {
-    const [minLat, minLng, maxLat, maxLng] = bbox;
-    const R = 6371000;
-    const toRadians = (deg) => (deg * Math.PI) / 180;
-    const northSouthDistance = Math.abs(maxLat - minLat) * (Math.PI / 180) * R;
-    const avgLat = (minLat + maxLat) / 2;
-    const eastWestDistance =
-        Math.abs(maxLng - minLng) * (Math.PI / 180) * R * Math.cos(toRadians(avgLat));
-    return Math.max(northSouthDistance, eastWestDistance);
+    return overallRoute;
 }
 
 function reconstructPath(next, start, end) {
@@ -1084,14 +1102,3 @@ function reconstructPath(next, start, end) {
     return path;
 }
 
-function createBoundingBox(lat1, lng1, lat2, lng2) {
-    
-    const bbox = [
-        Math.max(lat1, lat2),
-        Math.min(lng1, lng2),
-        Math.min(lat1, lat2),
-        Math.max(lng1, lng2) 
-    ];
-    
-    return bbox;
-}

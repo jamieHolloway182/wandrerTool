@@ -163,6 +163,26 @@ html, body {
     justify-content: center;
 }
 
+#finishButton {
+    margin-top: 10px;
+    width: 20%;
+    align-self: flex-end;
+    padding: 10px 20px;
+    background-color: #007bff;
+    border: 1px solid black; /* Add black border */
+    border-radius: 5px;
+    justify-content: center;
+    cursor: pointer;
+    display: none;
+}
+
+#routeButtons{
+    display: flex;
+    flex-direction: row;
+    justify-content: end;
+    gap: 10px;
+}
+
 #text{
     text-align: end;
 }

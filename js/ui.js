@@ -19,8 +19,10 @@ slider.addEventListener('mouseup', async function () {
 
     var polyline = L.polyline(pathCoordinates, { color: 'green', weight: 4 }).addTo(polylineGroup);
     var bounds = polyline.getBounds();
+
     map.fitBounds(bounds)
     
+    coordinates = pathCoordinates
 });
 
 const button1 = document.getElementById('button1');
@@ -80,6 +82,7 @@ function clearMap(fullClear=false){
             }
         }
     });
+    clicks = []
 }
 
 function handleFileUpload(event) {
@@ -112,6 +115,7 @@ function finishUpload(){
     text.innerHTML = "Press add button to start"
 
     uploaded = true
+    clicking = true
 
     bounds = getBoundsFromGraph(graph)
     bounds = [[bounds[0],bounds[1]],[bounds[2],bounds[3]]]
@@ -157,11 +161,15 @@ function toggleRouteButton(bool){
     }
     clearMap()
     clickCount = 0
-    clicking = !clicking
+    clicking = !bool
 }
 
 document.getElementById("routeButton").addEventListener('click', () => {
     if(uploaded){
         toggleRouteButton(clicking)
     }
+})
+
+document.getElementById("finishButton").addEventListener('click', () => {
+    finishClicks()
 })

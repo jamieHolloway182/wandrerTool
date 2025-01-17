@@ -28,7 +28,10 @@
             
             <button id="downloadButton">📥</button>
             
-            <button id="routeButton">+</button>
+            <div id="routeButtons">
+                <button id="routeButton">+</button>
+                <button id="finishButton">Finish</button>
+            </div>
             <p id="text">Upload KMZ to begin</p>
             
             <label for="slider" id="sliderLabel">Adjust Value:</label>
@@ -47,6 +50,7 @@
         <script src="https://cdn.jsdelivr.net/npm/rbush@3.0.1/rbush.min.js"></script>
         <script src="https://unpkg.com/hungarian-algorithm@1.0.0/dist/hungarian.js"></script>
         <script src="https://unpkg.com/@tmcw/togeojson"></script>
+
 
         <script>
             var map = L.map('map').setView([51.6000, 0.0000], 13); // Adjust view as needed
